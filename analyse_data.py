@@ -11,28 +11,8 @@ import matplotlib.pyplot as plt
 
 df_clean = pd.DataFrame()
 df = pd.read_json('data/data.json')
+df.to_excel('output/data0.xlsx', index=False)
 
-#             ['Id', #OK
-#             'Type', #OK
-#             'InitialStrikeDateUTC', #OK
-#             'MaturityDateUTC', #OK
-#             'Tenor', #OK
-#             'Barriers', #--> [0]{'Frequency} & [0]{'PercentValue}
-#             'ProductCurrency', #OK
-#             'Identifiers', #-->{'ISINs}[0]
-#             'Issuers', #--> [0]{'GroupName}
-#             'Markets', #--> [0]{'Code'}, [0]{'Distributors'}, [0]{'Brochures'}    
-#             'Categories', #OK
-#             'ProductGroup', #OK
-#             'PayoffStyles', #OK
-#             'DistributionChannels', #OK
-#             'AssetClasses', --> [0]{'Name'}
-#             'Underlyings',#--> #[0]{'Name'}
-#             'Autocalls',#--> #[0]{'DateUTC'} + [0]{'Level'} + [0]{'Payout'} for 0 and -1
-#             'Coupons', #--> #[0]{'MaxCoupon'} + [0]{'MinCoupon'}
-#             'CapitalProtection', #OK
-#             'SumMarketSalesVolume',#-->'Type': 'Estimated', 'IsPublic': True, 'Amounts'['Native']['Value']
-#             'Name'] #OK
 
 """We clean the columns with specific format for the output"""
 
@@ -70,55 +50,155 @@ df["AssetClass_"] = df["AssetClasses"].apply(
     lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
 )
 
-#"Underlyings" --> Underlying_
+#"Underlyings" --> Underlying_ & SectorName
 df["Underlying_"] = df["Underlyings"].apply(
     lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
 )
+df["Underlying_Type_"] = df["Underlyings"].apply(
+    lambda x: x[0].get("SectorName") if isinstance(x, list) and len(x) > 0 else None
+)
+
+#"Autocalls" --> AC_LastDate_, AC_LastLevel_, AC_LastPayout_, AC_FirstDate_, AC_FirstLevel_, AC_FirstPayout_ 
+df["AC_LastDate_"] = df["Autocalls"].apply(
+    lambda x: x[0].get("DateUTC") if isinstance(x, list) and len(x) > 0 else None
+)
+df["AC_LastLevel_"] = df["Autocalls"].apply(
+    lambda x: x[0].get("Level") if isinstance(x, list) and len(x) > 0 else None
+)
+df["AC_LastPayout_"] = df["Autocalls"].apply(
+    lambda x: x[0].get("Payout") if isinstance(x, list) and len(x) > 0 else None
+)
+df["AC_FirstDate_"] = df["Autocalls"].apply(
+    lambda x: x[-1].get("DateUTC") if isinstance(x, list) and len(x) > 0 else None
+)
+df["AC_FirstLevel_"] = df["Autocalls"].apply(
+    lambda x: x[-1].get("Level") if isinstance(x, list) and len(x) > 0 else None
+)
+df["AC_FirstPayout_"] = df["Autocalls"].apply(
+    lambda x: x[-1].get("Payout") if isinstance(x, list) and len(x) > 0 else None
+)
+
+#"Coupons" --> MinCoupon_, MaxCoupon_
+df["MinCoupon_"] = df["Coupons"].apply(
+    lambda x: x[0].get("MinCoupon") if isinstance(x, list) and len(x) > 0 else None
+)
+df["MaxCoupon_"] = df["Coupons"].apply(
+    lambda x: x[0].get("MaxCoupon") if isinstance(x, list) and len(x) > 0 else None
+)
+#"Wrappers" --> Wrapper_
+df["Wrapper_"] = df["Wrappers"].apply(
+    lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
+)
+
+#"AutoCallFrequency" --> AutoCallFreq_
+df["AutoCallFreq_"] = df["AutoCallFrequency"].apply(
+    lambda x: x[0] if isinstance(x, list) and len(x) > 0 else None
+)
+
+#"SumMarketSalesVolume" --> Volume_
+df["Volume_"] = df["SumMarketSalesVolume"].apply(
+    lambda x: x.get("Amounts").get("Native").get("Value") if isinstance(x, dict) and x.get("Amounts") and x.get("Amounts").get("Native") else None
+)
+
+#"Descriptions" --> Description_
+df["Description_"] = df["Descriptions"].apply(
+    lambda x: x[0].get("Value") if isinstance(x, list) and len(x) > 0 else None
+)
+
+#"PotentialMaxPayout" --> MaxPayout_
+df["MaxPayout_"] = df["PotentialMaxPayout"].apply(
+    lambda x: x.get("MaxAnnualized") if isinstance(x, dict) and x.get("MaxAnnualized") else None
+)
+#All fields in df_clean
+fields_to_keep_clean = ["Id",
+                        "Type",
+                        "InitialStrikeDateUTC",
+                        "MaturityDateUTC",
+                        "Tenor",
+                        "PDI_Type_",
+                        "PDI_Barrier_",
+                        "ProductCurrency",
+                        "ISIN_",
+                        "Issuer_",
+                        "Country_",
+                        "Distributor_",
+                        "FT_",
+                        "Categories",
+                        "ProductGroup",
+                        "PayoffStyles",
+                        "AssetClass_",
+                        "AssetClass_",
+                        "Underlying_",
+                        "Underlying_Type_",
+                        "AC_LastDate_",
+                        "AC_LastLevel_",
+                        "AC_LastPayout_",
+                        "AC_FirstDate_",
+                        "AC_FirstLevel_",
+                        "AC_FirstPayout_",
+                        "MinCoupon_",
+                        "MaxCoupon_",
+                        "MaxPayout_",
+                        "Wrapper_",
+                        "AutoCallFreq_",
+                        "Volume_",
+                        "CapitalProtection",
+                        "Name",
+                        "Description_"]
+
+df_clean = df[fields_to_keep_clean]
+df_clean.to_excel('output/data_clean.xlsx', index=False)
+
+#Interest Rates Products
+df_ir_products = df[df["AssetClass_"] == "Interest Rate"]
+fields_to_keep_ir_products = ["Country_",
+                            "Name",
+                            "Issuer_",
+                            "Distributor_",
+                            "Wrapper_",
+                            "Volume_",
+                            "ProductCurrency",
+                            "Underlying_",
+                            "InitialStrikeDateUTC",
+                            "Tenor",
+                            "CapitalProtection",
+                            "MinCoupon_",
+                            "MaxCoupon_",
+                            "MaxPayout_",
+                            "AutoCallFreq_",
+                            "AC_FirstDate_",
+                            "AC_FirstLevel_",
+                            "AC_FirstPayout_",
+                            "AC_LastLevel_",
+                            "AC_LastPayout_",
+                            "Description_",
+                            "ISIN_",
+                            "FT_"
+                            ]
+
+df_ir_products = df_ir_products[fields_to_keep_ir_products]
+df_ir_products.to_excel('output/data_ir_products.xlsx', index=False)
+
+#Credit Products
+df_credit_products = df[df["AssetClass_"] == "Credit"]
+fields_to_keep_credit_products = ["Country_",
+                            "Name",
+                            "Issuer_",
+                            "Distributor_",
+                            "Wrapper_",
+                            "Volume_",
+                            "ProductCurrency",
+                            "Underlying_",
+                            "InitialStrikeDateUTC",
+                            "Tenor",
+                            "MaxPayout_",
+                            "Description_",
+                            "ISIN_",
+                            "FT_"
+                            ]
+
+df_credit_products = df_credit_products[fields_to_keep_credit_products]
+df_credit_products.to_excel('output/data_credit_products.xlsx', index=False)
 
 
-# #"Underlyings" is a list of dictionaries with one key: "Name"
-# df["Autocall_First_Date"] = df["Underlyings"].apply(
-#     lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
-# )
-# #"Underlyings" is a list of dictionaries with one key: "Name"
-# df["Autocall_First_Payout"] = df["Underlyings"].apply(
-#     lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
-# )
-# #"Underlyings" is a list of dictionaries with one key: "Name"
-# df["Autocall_Last_Date"] = df["Underlyings"].apply(
-#     lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
-# )
-# #"Underlyings" is a list of dictionaries with one key: "Name"
-# df["Autocall_Last_Payout"] = df["Underlyings"].apply(
-#     lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
-# )
-# #"Underlyings" is a list of dictionaries with one key: "Name"
-# df["Coupon"] = df["Underlyings"].apply(
-#     lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
-# )
 
-# df_clean = df['Id', #OK
-#             'Type', #OK
-#             'InitialStrikeDateUTC', #OK
-#             'MaturityDateUTC', #OK
-#             'Tenor', #OK
-#             'Barriers', #--> [0]{'Frequency} & [0]{'PercentValue}
-#             'ProductCurrency', #OK
-#             'Identifiers', #-->{'ISINs}[0]
-#             'Issuers', #--> [0]{'GroupName}
-#             'Markets', #--> [0]{'Code'}
-#             'Categories', #OK
-#             'ProductGroup', #OK
-#             'PayoffStyles', #OK
-#             'DistributionChannels', #OK
-#             'Underlyings',#--> #[0]{'Name'}
-#             'Autocalls',#--> #[0]{'DateUTC'} + [0]{'Level'} + [0]{'Payout'} for 0 and -1
-#             'Coupons', #--> #[0]{'MaxCoupon'} + [0]{'MinCoupon'}
-#             'CapitalProtection', #OK
-#             'SumMarketSalesVolume',#-->'Type': 'Estimated', 'IsPublic': True, 'Amounts'['Native']['Value']
-#             'Name'] #OK
-
-# test_dic =df['Autocalls'].iloc[0][0]
-# print(test_dic.keys())
-
-df.head(5).to_excel('data.xlsx', index=False)
