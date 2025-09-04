@@ -4,17 +4,26 @@ Created on Wed May 28 15:40:15 2025
 
 @author: victor.bontemps
 """
+"===================================================================================================================================="
+""" On importe les librairies et les inputs du script"""
+"===================================================================================================================================="
 
+""" Librairies"""
 from datetime import date
+from datetime import datetime
 import pandas as pd
-import matplotlib.pyplot as plt
+from pathlib import Path
+from zoneinfo import ZoneInfo  # Python 3.9+
 
-df_clean = pd.DataFrame()
+""" Inputs """
+date_begin_extract = "2025-08-21"
+markets = ["France, Spain, Belgium, Italy, Switzerland"]
 df = pd.read_json('data/data.json')
-df.to_excel('output/data0.xlsx', index=False)
 
+"===================================================================================================================================="
+""" On transforme les datas pour avoir des formats faciles à appréhender"""
+"===================================================================================================================================="
 
-"""We clean the columns with specific format for the output"""
 
 #"Barriers" --> PDI_Type_ & PDI_Barrier_
 df["PDI_Type_"] = df["Barriers"].apply(
@@ -52,7 +61,7 @@ df["AssetClass_"] = df["AssetClasses"].apply(
 
 #"Underlyings" --> Underlying_ & SectorName
 df["Underlying_"] = df["Underlyings"].apply(
-    lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
+    lambda x: [ x[i].get("Name") if isinstance(x, list) and len(x) > 0 else None for i in range(len(x))]
 )
 df["Underlying_Type_"] = df["Underlyings"].apply(
     lambda x: x[0].get("SectorName") if isinstance(x, list) and len(x) > 0 else None
@@ -106,9 +115,16 @@ df["Description_"] = df["Descriptions"].apply(
 )
 
 #"PotentialMaxPayout" --> MaxPayout_
-df["MaxPayout_"] = df["PotentialMaxPayout"].apply(
+df["MaxAnnualizedPayout_"] = df["PotentialMaxPayout"].apply(
     lambda x: x.get("MaxAnnualized") if isinstance(x, dict) and x.get("MaxAnnualized") else None
 )
+
+
+
+"===================================================================================================================================="
+""" On filtre les champs associés à chaque catégorie de produits"""
+"===================================================================================================================================="
+
 #All fields in df_clean
 fields_to_keep_clean = ["Id",
                         "Type",
@@ -138,7 +154,7 @@ fields_to_keep_clean = ["Id",
                         "AC_FirstPayout_",
                         "MinCoupon_",
                         "MaxCoupon_",
-                        "MaxPayout_",
+                        "MaxAnnualizedPayout_",
                         "Wrapper_",
                         "AutoCallFreq_",
                         "Volume_",
@@ -147,7 +163,6 @@ fields_to_keep_clean = ["Id",
                         "Description_"]
 
 df_clean = df[fields_to_keep_clean]
-df_clean.to_excel('output/data_clean.xlsx', index=False)
 
 #Interest Rates Products
 df_ir_products = df[df["AssetClass_"] == "Interest Rate"]
@@ -164,7 +179,7 @@ fields_to_keep_ir_products = ["Country_",
                             "CapitalProtection",
                             "MinCoupon_",
                             "MaxCoupon_",
-                            "MaxPayout_",
+                            "MaxAnnualizedPayout_",
                             "AutoCallFreq_",
                             "AC_FirstDate_",
                             "AC_FirstLevel_",
@@ -177,7 +192,6 @@ fields_to_keep_ir_products = ["Country_",
                             ]
 
 df_ir_products = df_ir_products[fields_to_keep_ir_products]
-df_ir_products.to_excel('output/data_ir_products.xlsx', index=False)
 
 #Credit Products
 df_credit_products = df[df["AssetClass_"] == "Credit"]
@@ -191,14 +205,100 @@ fields_to_keep_credit_products = ["Country_",
                             "Underlying_",
                             "InitialStrikeDateUTC",
                             "Tenor",
-                            "MaxPayout_",
+                            "MaxAnnualizedPayout_",
                             "Description_",
                             "ISIN_",
                             "FT_"
                             ]
 
 df_credit_products = df_credit_products[fields_to_keep_credit_products]
-df_credit_products.to_excel('output/data_credit_products.xlsx', index=False)
 
+#EquityProducts
+df_eqd_products = df[df["AssetClass_"].str.startswith("Equity", na=False)]
+fields_to_keep_eqd_products = ["Country_",
+                            "Name",
+                            "Issuer_",
+                            "Distributor_",
+                            "Wrapper_",
+                            "Volume_",
+                            "ProductCurrency",
+                            "Underlying_",
+                            "Underlying_Type_",
+                            "InitialStrikeDateUTC",
+                            "Tenor",
+                            "AutoCallFreq_",
+                            "CapitalProtection",
+                            "PDI_Type_",
+                            "PDI_Barrier_",
+                            "MinCoupon_",
+                            "MaxCoupon_",
+                            "MaxAnnualizedPayout_",
+                            "AC_FirstDate_",
+                            "AC_FirstLevel_",
+                            "AC_FirstPayout_",
+                            "AC_LastLevel_",
+                            "AC_LastPayout_",
+                            "Description_",
+                            "ISIN_",
+                            "FT_"
+                            ]
+
+df_eqd_products = df_eqd_products[fields_to_keep_eqd_products]
+
+#Other products
+mask = (
+    ~df["AssetClass_"].isin(["Interest Rate", "Credit"])   # pas IR ni Credit
+    & ~df["AssetClass_"].str.startswith("Equity", na=False) # ne commence pas par 'Equity'
+)
+fields_to_keep_other_products = ["Country_",
+                            "Name",
+                            "Issuer_",
+                            "Distributor_",
+                            "Wrapper_",
+                            "Volume_",
+                            "ProductCurrency",
+                            "Underlying_",
+                            "Underlying_Type_",
+                            "InitialStrikeDateUTC",
+                            "Tenor",
+                            "AutoCallFreq_",
+                            "CapitalProtection",
+                            "PDI_Type_",
+                            "PDI_Barrier_",
+                            "MinCoupon_",
+                            "MaxCoupon_",
+                            "MaxAnnualizedPayout_",
+                            "AC_FirstDate_",
+                            "AC_FirstLevel_",
+                            "AC_FirstPayout_",
+                            "AC_LastLevel_",
+                            "AC_LastPayout_",
+                            "Description_",
+                            "ISIN_",
+                            "FT_"
+                            ]
+df_other_products = df.loc[mask, fields_to_keep_other_products].copy()
+df_other_products = df_other_products[fields_to_keep_other_products]
+
+"===================================================================================================================================="
+""" On écrit les données dans un fichier excel """
+"===================================================================================================================================="
+
+# nom horodaté : Europe/Paris, format yyyy_mm_dd + hhmm
+stamp = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y_%m_%d%H%M")
+
+out_dir = Path("output")
+out_dir.mkdir(parents=True, exist_ok=True)
+outfile = out_dir / f"srp_data_output_{stamp}.xlsx"
+
+with pd.ExcelWriter(outfile, engine="xlsxwriter") as writer:
+    df.to_excel(writer, sheet_name="data_raw", index=False)
+    df_clean.to_excel(writer, sheet_name="data_clean", index=False)
+    df_ir_products.to_excel(writer, sheet_name="ir_products", index=False)
+    df_credit_products.to_excel(writer, sheet_name="credit_products", index=False)
+    df_eqd_products.to_excel(writer, sheet_name="eqd_products", index=False)
+    df_other_products.to_excel(writer, sheet_name="other_products", index=False)
+
+print(f"Fichier généré : {outfile}")
 
 
