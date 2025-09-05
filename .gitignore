@@ -20,3 +20,8 @@ Thumbs.db
 # Data
 data/
 output/
+
+# Secrets
+.env
+*.env
+

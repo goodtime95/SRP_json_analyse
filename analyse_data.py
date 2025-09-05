@@ -1,304 +1,194 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed May 28 15:40:15 2025
-
-@author: victor.bontemps
-"""
-"===================================================================================================================================="
-""" On importe les librairies et les inputs du script"""
-"===================================================================================================================================="
-
-""" Librairies"""
-from datetime import date
 from datetime import datetime
-import pandas as pd
+from zoneinfo import ZoneInfo
 from pathlib import Path
-from zoneinfo import ZoneInfo  # Python 3.9+
-
-""" Inputs """
-date_begin_extract = "2025-08-21"
-markets = ["France, Spain, Belgium, Italy, Switzerland"]
-df = pd.read_json('data/data.json')
-
-"===================================================================================================================================="
-""" On transforme les datas pour avoir des formats faciles à appréhender"""
-"===================================================================================================================================="
-
-
-#"Barriers" --> PDI_Type_ & PDI_Barrier_
-df["PDI_Type_"] = df["Barriers"].apply(
-    lambda x: x[0].get("Frequency") if isinstance(x, list) and len(x) > 0 else None
-)
-df["PDI_Barrier_"] = df["Barriers"].apply(
-    lambda x: x[0].get("PercentValue") if isinstance(x, list) and len(x) > 0 else None
-)
-
-#"Identifiers" --> ISIN_
-df["ISIN_"] = df["Identifiers"].apply(
-    lambda x: x.get("ISINs",[None])[0] if x is not None and x.get("ISINs") else None
-)
-
-#"Issuers" --> Issuer_
-df["Issuer_"] = df["Issuers"].apply(
-    lambda x: x[0].get("GroupName") if isinstance(x, list) and len(x) > 0 else None
-)
-
-#"Markets" --> Country_, Distributor_, FT_
-df["Country_"] = df["Markets"].apply(
-    lambda x: x[0].get("Code") if isinstance(x, list) and len(x) > 0 else None
-)
-df["Distributor_"] = df["Markets"].apply(
-    lambda x: x[0].get("Distributors")[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
-)
-df["FT_"] = df["Markets"].apply(
-    lambda x: x[0].get("Brochures",[None])[0].get("DownloadUri",None) if isinstance(x, list) and len(x) > 0 and x[0].get("Brochures") and len(x[0].get("Brochures")) > 0 else None
-)
-
-#"AssetClasses" --> AssetClass_
-df["AssetClass_"] = df["AssetClasses"].apply(
-    lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
-)
-
-#"Underlyings" --> Underlying_ & SectorName
-df["Underlying_"] = df["Underlyings"].apply(
-    lambda x: [ x[i].get("Name") if isinstance(x, list) and len(x) > 0 else None for i in range(len(x))]
-)
-df["Underlying_Type_"] = df["Underlyings"].apply(
-    lambda x: x[0].get("SectorName") if isinstance(x, list) and len(x) > 0 else None
-)
-
-#"Autocalls" --> AC_LastDate_, AC_LastLevel_, AC_LastPayout_, AC_FirstDate_, AC_FirstLevel_, AC_FirstPayout_ 
-df["AC_LastDate_"] = df["Autocalls"].apply(
-    lambda x: x[0].get("DateUTC") if isinstance(x, list) and len(x) > 0 else None
-)
-df["AC_LastLevel_"] = df["Autocalls"].apply(
-    lambda x: x[0].get("Level") if isinstance(x, list) and len(x) > 0 else None
-)
-df["AC_LastPayout_"] = df["Autocalls"].apply(
-    lambda x: x[0].get("Payout") if isinstance(x, list) and len(x) > 0 else None
-)
-df["AC_FirstDate_"] = df["Autocalls"].apply(
-    lambda x: x[-1].get("DateUTC") if isinstance(x, list) and len(x) > 0 else None
-)
-df["AC_FirstLevel_"] = df["Autocalls"].apply(
-    lambda x: x[-1].get("Level") if isinstance(x, list) and len(x) > 0 else None
-)
-df["AC_FirstPayout_"] = df["Autocalls"].apply(
-    lambda x: x[-1].get("Payout") if isinstance(x, list) and len(x) > 0 else None
-)
-
-#"Coupons" --> MinCoupon_, MaxCoupon_
-df["MinCoupon_"] = df["Coupons"].apply(
-    lambda x: x[0].get("MinCoupon") if isinstance(x, list) and len(x) > 0 else None
-)
-df["MaxCoupon_"] = df["Coupons"].apply(
-    lambda x: x[0].get("MaxCoupon") if isinstance(x, list) and len(x) > 0 else None
-)
-#"Wrappers" --> Wrapper_
-df["Wrapper_"] = df["Wrappers"].apply(
-    lambda x: x[0].get("Name") if isinstance(x, list) and len(x) > 0 else None
-)
-
-#"AutoCallFrequency" --> AutoCallFreq_
-df["AutoCallFreq_"] = df["AutoCallFrequency"].apply(
-    lambda x: x[0] if isinstance(x, list) and len(x) > 0 else None
-)
-
-#"SumMarketSalesVolume" --> Volume_
-df["Volume_"] = df["SumMarketSalesVolume"].apply(
-    lambda x: x.get("Amounts").get("Native").get("Value") if isinstance(x, dict) and x.get("Amounts") and x.get("Amounts").get("Native") else None
-)
-
-#"Descriptions" --> Description_
-df["Description_"] = df["Descriptions"].apply(
-    lambda x: x[0].get("Value") if isinstance(x, list) and len(x) > 0 else None
-)
-
-#"PotentialMaxPayout" --> MaxPayout_
-df["MaxAnnualizedPayout_"] = df["PotentialMaxPayout"].apply(
-    lambda x: x.get("MaxAnnualized") if isinstance(x, dict) and x.get("MaxAnnualized") else None
-)
+import os
+import pandas as pd
+from openai import OpenAI
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from dotenv import load_dotenv
+import sys
+import re
+import html
+import win32com.client as win32
+import markdown
 
 
-
-"===================================================================================================================================="
-""" On filtre les champs associés à chaque catégorie de produits"""
-"===================================================================================================================================="
-
-#All fields in df_clean
-fields_to_keep_clean = ["Id",
-                        "Type",
-                        "InitialStrikeDateUTC",
-                        "MaturityDateUTC",
-                        "Tenor",
-                        "PDI_Type_",
-                        "PDI_Barrier_",
-                        "ProductCurrency",
-                        "ISIN_",
-                        "Issuer_",
-                        "Country_",
-                        "Distributor_",
-                        "FT_",
-                        "Categories",
-                        "ProductGroup",
-                        "PayoffStyles",
-                        "AssetClass_",
-                        "AssetClass_",
-                        "Underlying_",
-                        "Underlying_Type_",
-                        "AC_LastDate_",
-                        "AC_LastLevel_",
-                        "AC_LastPayout_",
-                        "AC_FirstDate_",
-                        "AC_FirstLevel_",
-                        "AC_FirstPayout_",
-                        "MinCoupon_",
-                        "MaxCoupon_",
-                        "MaxAnnualizedPayout_",
-                        "Wrapper_",
-                        "AutoCallFreq_",
-                        "Volume_",
-                        "CapitalProtection",
-                        "Name",
-                        "Description_"]
-
-df_clean = df[fields_to_keep_clean]
-
-#Interest Rates Products
-df_ir_products = df[df["AssetClass_"] == "Interest Rate"]
-fields_to_keep_ir_products = ["Country_",
-                            "Name",
-                            "Issuer_",
-                            "Distributor_",
-                            "Wrapper_",
-                            "Volume_",
-                            "ProductCurrency",
-                            "Underlying_",
-                            "InitialStrikeDateUTC",
-                            "Tenor",
-                            "CapitalProtection",
-                            "MinCoupon_",
-                            "MaxCoupon_",
-                            "MaxAnnualizedPayout_",
-                            "AutoCallFreq_",
-                            "AC_FirstDate_",
-                            "AC_FirstLevel_",
-                            "AC_FirstPayout_",
-                            "AC_LastLevel_",
-                            "AC_LastPayout_",
-                            "Description_",
-                            "ISIN_",
-                            "FT_"
-                            ]
-
-df_ir_products = df_ir_products[fields_to_keep_ir_products]
-
-#Credit Products
-df_credit_products = df[df["AssetClass_"] == "Credit"]
-fields_to_keep_credit_products = ["Country_",
-                            "Name",
-                            "Issuer_",
-                            "Distributor_",
-                            "Wrapper_",
-                            "Volume_",
-                            "ProductCurrency",
-                            "Underlying_",
-                            "InitialStrikeDateUTC",
-                            "Tenor",
-                            "MaxAnnualizedPayout_",
-                            "Description_",
-                            "ISIN_",
-                            "FT_"
-                            ]
-
-df_credit_products = df_credit_products[fields_to_keep_credit_products]
-
-#EquityProducts
-df_eqd_products = df[df["AssetClass_"].str.startswith("Equity", na=False)]
-fields_to_keep_eqd_products = ["Country_",
-                            "Name",
-                            "Issuer_",
-                            "Distributor_",
-                            "Wrapper_",
-                            "Volume_",
-                            "ProductCurrency",
-                            "Underlying_",
-                            "Underlying_Type_",
-                            "InitialStrikeDateUTC",
-                            "Tenor",
-                            "AutoCallFreq_",
-                            "CapitalProtection",
-                            "PDI_Type_",
-                            "PDI_Barrier_",
-                            "MinCoupon_",
-                            "MaxCoupon_",
-                            "MaxAnnualizedPayout_",
-                            "AC_FirstDate_",
-                            "AC_FirstLevel_",
-                            "AC_FirstPayout_",
-                            "AC_LastLevel_",
-                            "AC_LastPayout_",
-                            "Description_",
-                            "ISIN_",
-                            "FT_"
-                            ]
-
-df_eqd_products = df_eqd_products[fields_to_keep_eqd_products]
-
-#Other products
-mask = (
-    ~df["AssetClass_"].isin(["Interest Rate", "Credit"])   # pas IR ni Credit
-    & ~df["AssetClass_"].str.startswith("Equity", na=False) # ne commence pas par 'Equity'
-)
-fields_to_keep_other_products = ["Country_",
-                            "Name",
-                            "Issuer_",
-                            "Distributor_",
-                            "Wrapper_",
-                            "Volume_",
-                            "ProductCurrency",
-                            "Underlying_",
-                            "Underlying_Type_",
-                            "InitialStrikeDateUTC",
-                            "Tenor",
-                            "AutoCallFreq_",
-                            "CapitalProtection",
-                            "PDI_Type_",
-                            "PDI_Barrier_",
-                            "MinCoupon_",
-                            "MaxCoupon_",
-                            "MaxAnnualizedPayout_",
-                            "AC_FirstDate_",
-                            "AC_FirstLevel_",
-                            "AC_FirstPayout_",
-                            "AC_LastLevel_",
-                            "AC_LastPayout_",
-                            "Description_",
-                            "ISIN_",
-                            "FT_"
-                            ]
-df_other_products = df.loc[mask, fields_to_keep_other_products].copy()
-df_other_products = df_other_products[fields_to_keep_other_products]
-
-"===================================================================================================================================="
-""" On écrit les données dans un fichier excel """
-"===================================================================================================================================="
-
-# nom horodaté : Europe/Paris, format yyyy_mm_dd + hhmm
-stamp = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y_%m_%d%H%M")
-
+# --- Timestamp et output dir ---
+stamp = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y_%m_%d")
 out_dir = Path("output")
 out_dir.mkdir(parents=True, exist_ok=True)
+
 outfile = out_dir / f"srp_data_output_{stamp}.xlsx"
 
-with pd.ExcelWriter(outfile, engine="xlsxwriter") as writer:
-    df.to_excel(writer, sheet_name="data_raw", index=False)
-    df_clean.to_excel(writer, sheet_name="data_clean", index=False)
-    df_ir_products.to_excel(writer, sheet_name="ir_products", index=False)
-    df_credit_products.to_excel(writer, sheet_name="credit_products", index=False)
-    df_eqd_products.to_excel(writer, sheet_name="eqd_products", index=False)
-    df_other_products.to_excel(writer, sheet_name="other_products", index=False)
+csv_map = {
+    "Interest Rates": out_dir / f"ir_products_{stamp}.csv",
+    "Credit": out_dir / f"credit_products_{stamp}.csv",
+    "EQD": out_dir / f"eqd_products_{stamp}.csv",
+    "Other": out_dir / f"other_products_{stamp}.csv",
+}
 
-print(f"Fichier généré : {outfile}")
+# Charger automatiquement le .env
+load_dotenv()
+
+# Récupérer les variables
+api_key = os.getenv("OPENAI_API_KEY")
+from_email = os.getenv("EMAIL_FROM")
+to_email = os.getenv("EMAIL_TO")
+
+PROMPT_SALES = (
+
+    "Tu es analyste sur un desk de produits structurés. Tu reçois un fichier de deals avec les "
+    "caractéristiques des produits (nom, émetteur, sous-jacent, volume, maturité, description etc.). "
+    "Ta mission : produire une synthèse rapide et actionnable pour les vendeurs, à inclure dans un mail avec le fichier. "
+    "Contraintes : Format desk-to-sales (percutant, lisible en diagonale). Moins de 10 minutes de lecture → structuré en blocs clairs avec bullet points. "
+    "Hiérarchise : commence par flux/volumes globaux, sous-jacents dominants, produits et enfin analyse synthétique "
+    "Évite les listes trop longues → regroupe par thème/sous-thème "
+    "Structure attendue : Flux & volumes (tickets, montants, tenor moyen, taille typique des deals, émetteurs actifs). "
+    "Sous-jacents dominants (triés par familles). "
+    "Produits & structuration (type de note, wrapper, caractéristiques coupon/call)."
+    "Analyse synthétique : Analyse des émissions remarquables et des flux majoritaire en une phrase"
+
+)
+
+# client = OpenAI(api_key=api_key)
+
+# def summarize_csv(csv_path: Path, category: str, model: str = "gpt-4.1-mini") -> str:
+#     """
+#     Lit le CSV puis l'envoie en texte dans le prompt (pas d'upload de fichier).
+#     On limite la taille pour rester compact.
+#     """
+#     df = pd.read_csv(csv_path)
+
+#     # Limiter la taille: on garde les 2000 premières lignes puis on tronque à ~100k caractères
+#     csv_text = df.head(2000).to_csv(index=False)
+#     csv_text = csv_text[:100000]
+
+#     resp = client.responses.create(
+#         model=model,
+#         input=(
+#             f"{PROMPT_SALES}\n\n"
+#             f"Catégorie: {category}.\n"
+#             f"Voici les deals au format CSV (échantillon si trop volumineux) :\n\n{csv_text}"
+#         ),
+#         temperature=0.2,
+#     )
+
+#     # Extraction simple du texte
+#     if hasattr(resp, "output_text") and resp.output_text:
+#         return resp.output_text.strip()
+
+#     # Fallback minimal
+#     try:
+#         return resp.choices[0].message.content.strip()
+#     except Exception:
+#         return "Synthèse indisponible."
+
+# summaries = {}
+# for cat, path in csv_map.items():
+#     summaries[cat] = summarize_csv(path, cat)
+
+# print(summaries)
+
+def md_to_html(md_text: str) -> str:
+    """
+    Convertit du Markdown en HTML avec des extensions adaptées
+    (listes "propres", tableaux, sauts de ligne, etc.).
+    """
+    return markdown.markdown(
+        md_text or "",
+        extensions=["extra", "sane_lists", "nl2br", "tables"]
+    )
+def summaries_to_html_email(summaries: dict, title: str = "Synthèses Desk-to-Sales") -> str:
+    """
+    Crée un HTML compatible Outlook :
+    - Bandeau titre
+    - Sommaire cliquable (ancres)
+    - Un bloc par clé (ex: 'Interest Rates', 'Credit', ...)
+    """
+    header_html = f"""
+<div style="font-family:Segoe UI, Arial, sans-serif; font-size:13px; color:#222;">
+  <div style="background:#0b5cff; color:#fff; padding:16px; border-radius:6px 6px 0 0;">
+    <h2 style="margin:0; font-size:18px;">{html.escape(title)}</h2>
+  </div>
+  <div style="border:1px solid #e5e5e5; border-top:none; border-radius:0 0 6px 6px; padding:16px;">
+"""
+
+    # Sommaire
+    keys = list(summaries.keys())
+    toc_items = []
+    for k in keys:
+        anchor = re.sub(r'[^a-z0-9]+', '-', k.lower()).strip('-')
+        toc_items.append(
+            f'<li style="margin:4px 0;"><a href="#{anchor}" style="color:#0b5cff; text-decoration:none;">{html.escape(k)}</a></li>'
+        )
+    toc_html = f"""
+    <div style="margin-bottom:12px;">
+      <p style="margin:6px 0 4px 0; color:#555;"><strong>Sommaire</strong></p>
+      <ul style="margin:4px 0 12px 18px; padding:0;">
+        {''.join(toc_items)}
+      </ul>
+    </div>
+    <hr style="border:none;border-top:1px solid #eee;margin:12px 0 16px;">
+"""
+
+    # Sections
+    sections_html = []
+    for k in keys:
+        anchor = re.sub(r'[^a-z0-9]+', '-', k.lower()).strip('-')
+        content_html = md_to_html(summaries.get(k, ""))
+        section_block = f"""
+    <a id="{anchor}"></a>
+    <h3 style="margin:18px 0 8px; font-size:16px;">{html.escape(k)}</h3>
+    <div style="margin:0 0 12px;">
+      {content_html}
+    </div>
+"""
+        sections_html.append(section_block)
+
+    footer_html = """
+    <div style="margin-top:16px; font-size:12px; color:#666;">
+      — Généré automatiquement.
+    </div>
+  </div>
+</div>
+"""
+    return header_html + toc_html + "\n".join(sections_html) + footer_html
+
+# --- 3) Envoi / sauvegarde via Outlook ---
+def create_mail_from_summaries(
+    summaries: dict,
+    subject: str,
+    recipient: str,
+    title: str = "Synthèses Desk-to-Sales",
+    send: bool = False,
+    cc: str = "",
+    bcc: str = ""
+):
+    """
+    Construit le HTML depuis 'summaries' puis crée le mail Outlook.
+    """
+    html_body = summaries_to_html_email(summaries, title=title)
+
+    outlook = win32.Dispatch('outlook.application')
+    mail = outlook.CreateItem(0)
+    mail.To = recipient
+    if cc:
+        mail.CC = cc
+    if bcc:
+        mail.BCC = bcc
+    mail.Subject = subject
+    mail.HTMLBody = html_body  # HTMLBody (pas besoin de fallback)
+    if send:
+        mail.Send()
+    else:
+        mail.Save()
 
 
+create_mail_from_summaries(
+        summaries=summaries,
+        subject="Desk-to-Sales – Synthèses & Recos",
+        recipient="mail.address@gmail.com",
+        title="Desk-to-Sales – Synthèses (IR, Credit, EQD, Other)",
+        send=False  # True pour envoyer
+    )
