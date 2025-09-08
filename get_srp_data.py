@@ -289,6 +289,7 @@ stamp = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y_%m_%d")
 
 out_dir = Path("output")
 out_dir.mkdir(parents=True, exist_ok=True)
+out_dir_csv =  out_dir / "csv_folder"
 outfile = out_dir / f"srp_data_output_{stamp}.xlsx"
 
 with pd.ExcelWriter(outfile, engine="xlsxwriter") as writer:
@@ -302,10 +303,10 @@ with pd.ExcelWriter(outfile, engine="xlsxwriter") as writer:
 print(f"Fichier généré : {outfile}")
 
 csv_map = {
-    "Interest Rates": out_dir / f"ir_products_{stamp}.csv",
-    "Credit": out_dir / f"credit_products_{stamp}.csv",
-    "EQD": out_dir / f"eqd_products_{stamp}.csv",
-    "Other": out_dir / f"other_products_{stamp}.csv",
+    "Interest Rates": out_dir_csv / f"ir_products_{stamp}.csv",
+    "Credit": out_dir_csv / f"credit_products_{stamp}.csv",
+    "EQD": out_dir_csv / f"eqd_products_{stamp}.csv",
+    "Other": out_dir_csv / f"other_products_{stamp}.csv",
 }
 
 df_ir_products.to_csv(csv_map["Interest Rates"], index=False, encoding="utf-8")
