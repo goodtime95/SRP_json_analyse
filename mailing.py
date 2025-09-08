@@ -57,6 +57,7 @@ outpath_json = out_dir_json / f"gpt_srp_analyze_{stamp}.json"
 outfile = out_dir / f"srp_data_output_{stamp}.xlsx"
 
 load_dotenv()
+from_email = os.getenv("EMAIL_FROM")
 to_email = os.getenv("EMAIL_TO")
 subject = "Overview SRP data"
 
@@ -194,6 +195,6 @@ mail.To = to_email
 mail.Subject = subject
 mail.HTMLBody = html_body  # ⚡ HTML au lieu de texte brut
 mail.Attachments.Add(Source=str(outfile.resolve()))
-mail.Display()  # ou mail.Send()
+mail.Save()  # ou mail.Send()
 
 
